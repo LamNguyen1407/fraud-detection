@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # ==========================
+  # Kafka Broker
+  # ==========================
+  kafka-broker:
+    image: confluentinc/cp-kafka:7.7.0
+    container_name: kafka-broker
+    environment:
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://0.0.0.0:9094
+      # 👇 IP này là IP ZeroTier để các máy khác kết nối được
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: "7Dvn0OLMQo-bg4qmCmflVg"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    ports:
+      - "9092:9092"   # internal broker connection
+      - "9094:9094"   # external client connection
+    networks:
+      - kafka-network
+
+  # ==========================
+  # Kafka UI
+  # ==========================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-broker:9092
+      KAFKA_CLUSTERS_0_READONLY: false
+      KAFKA_CLUSTERS_0_TOPIC_AUTO_CREATE: true
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka-broker
+    networks:
+      - kafka-network
+
+  # ==========================
+  # PostgreSQL Database
+  # ==========================
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypass
+      POSTGRES_DB: mydb
+    ports:
+      - "5433:5432"   # expose PostgreSQL on host port 5433
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - kafka-network
+
+  # ==========================
+  # MinIO
+  # ==========================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console web 
+    volumes:
+      - ./minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    networks:
+      - kafka-network
+
+# ==========================
+# Docker Networks & Volumes
+# ==========================
+volumes:
+  pg_data:
+
+networks:
+  kafka-network:
+    driver: bridge
